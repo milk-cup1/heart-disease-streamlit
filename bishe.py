@@ -1,6 +1,7 @@
 # 心脏病风险预测代码模板（基于机器学习）
 # By milk-cup1 | 2026
 
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,7 +21,12 @@ import shap
 # 使用UCI心脏病数据集（processed.cleveland.data）
 # 特征名称：age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal, target
 columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
-df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 拼接数据集文件的完整路径
+data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
+# 读取数据
+df = pd.read_csv(data_path, names=columns)
 
 # 处理缺失值（将?替换为NaN）
 df = df.replace('?', pd.NA)

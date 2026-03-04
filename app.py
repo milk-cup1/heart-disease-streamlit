@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -31,10 +32,16 @@ option = st.sidebar.selectbox(
 # 1. 数据加载和预处理
 @st.cache_data
 def load_data(dataset_name):
+    # 获取当前脚本所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     if dataset_name == "UCI心脏病数据集":
         # 加载UCI心脏病数据集
         columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
-        df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
+        data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
+        # 原始数据
+        raw_df = pd.read_csv(data_path, names=columns)
+        # 清洗后的数据
+        df = raw_df.copy()
         # 处理缺失值
         df = df.replace('?', pd.NA)
         df = df.dropna()
@@ -45,12 +52,16 @@ def load_data(dataset_name):
         df['target'] = df['target'].apply(lambda x: 1 if x > 0 else 0)
     elif dataset_name == "Framingham数据集":
         # 加载Framingham数据集
-        df = pd.read_csv('framingham.csv')
+        data_path = os.path.join(current_dir, 'framingham.csv')
+        # 原始数据
+        raw_df = pd.read_csv(data_path)
+        # 清洗后的数据
+        df = raw_df.copy()
         # 处理缺失值
         df = df.dropna()
         # 重命名目标变量以保持一致性
         df = df.rename(columns={'TenYearCHD': 'target'})
-    return df
+    return df, raw_df
 
 # 数据集选择
 st.sidebar.subheader("数据集选择")
@@ -60,37 +71,220 @@ dataset_name = st.sidebar.selectbox(
 )
 
 # 加载数据
-df = load_data(dataset_name)
+df, raw_df = load_data(dataset_name)
 
 # 2. 数据探索部分
 if option == "数据探索":
     st.subheader("数据探索")
     
-    # 显示数据基本信息
-    st.write("### 数据集基本信息")
-    st.write(df.info())
+    # 创建选项卡
+    tab1, tab2, tab3, tab4 = st.tabs(["数据概览", "数据清洗过程", "数据质量分析", "相关性分析"])
     
-    # 显示前几行数据
-    st.write("### 数据预览")
-    st.write(df.head())
+    with tab1:
+        # 显示数据基本信息
+        st.write("### 数据集基本信息")
+        st.write(df.info())
+        
+        # 显示前几行数据
+        st.write("### 数据预览")
+        st.write(df.head())
+        
+        # 显示统计描述
+        st.write("### 数据统计描述")
+        st.write(df.describe())
+        
+        # 显示目标变量分布
+        st.write("### 目标变量分布")
+        target_counts = df['target'].value_counts()
+        st.bar_chart(target_counts)
+        st.write(f"无心脏病: {target_counts[0]}人")
+        st.write(f"有心脏病: {target_counts[1]}人")
     
-    # 显示统计描述
-    st.write("### 数据统计描述")
-    st.write(df.describe())
+    with tab2:
+        st.write("### 数据清洗过程")
+        
+        # 数据形状对比
+        st.write("#### 数据形状对比")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**原始数据**")
+            st.write(f"行数: {raw_df.shape[0]}")
+            st.write(f"列数: {raw_df.shape[1]}")
+        with col2:
+            st.write("**清洗后数据**")
+            st.write(f"行数: {df.shape[0]}")
+            st.write(f"列数: {df.shape[1]}")
+        
+        deleted_rows = raw_df.shape[0] - df.shape[0]
+        deleted_ratio = (deleted_rows / raw_df.shape[0]) * 100
+        st.write(f"删除的样本数: {deleted_rows} ({deleted_ratio:.2f}%)")
+        
+        # 缺失值对比
+        st.write("#### 缺失值对比")
+        
+        # 原始数据缺失值
+        raw_missing = raw_df.isnull().sum()
+        raw_missing = raw_missing[raw_missing > 0]
+        
+        if len(raw_missing) > 0:
+            st.write("**原始数据缺失值**")
+            # 绘制缺失值条形图
+            fig, ax = plt.subplots(figsize=(10, 6))
+            raw_missing.plot(kind='bar', ax=ax)
+            plt.title('Raw Data Missing Values Distribution')
+            plt.ylabel('Missing Values Count')
+            st.pyplot(fig)
+            
+            # 显示缺失值表格
+            missing_df = pd.DataFrame({
+                '缺失数量': raw_missing,
+                '缺失比例': (raw_missing / raw_df.shape[0] * 100).round(2)
+            })
+            st.write(missing_df)
+        else:
+            st.write("**原始数据无缺失值**")
+        
+        # 清洗后数据缺失值
+        clean_missing = df.isnull().sum().sum()
+        if clean_missing == 0:
+            st.write("**清洗后数据**")
+            st.write("已删除所有含缺失值的行")
+        
+        # 数值特征分布对比
+        st.write("#### 数值特征分布对比")
+        
+        # 选择关键数值特征
+        if dataset_name == "UCI心脏病数据集":
+            numeric_features = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
+        else:
+            numeric_features = ['age', 'totChol', 'sysBP', 'diaBP', 'BMI', 'heartRate', 'glucose']
+        
+        for feature in numeric_features:
+            st.write(f"**{feature} 分布对比**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("原始数据")
+                # 排除缺失值后绘制
+                if feature in raw_df.columns:
+                    raw_data = raw_df[feature].dropna()
+                    fig, ax = plt.subplots()
+                    sns.histplot(raw_data, kde=True, ax=ax)
+                    plt.title(f'Raw Data {feature} Distribution')
+                    st.pyplot(fig)
+            
+            with col2:
+                st.write("清洗后数据")
+                if feature in df.columns:
+                    fig, ax = plt.subplots()
+                    sns.histplot(df[feature], kde=True, ax=ax)
+                    plt.title(f'Cleaned Data {feature} Distribution')
+                    st.pyplot(fig)
+        
+        # 类别特征频数对比
+        st.write("#### 类别特征频数对比")
+        
+        if dataset_name == "UCI心脏病数据集":
+            cat_features = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope']
+        else:
+            cat_features = ['male', 'education', 'currentSmoker', 'BPMeds', 'prevalentStroke', 'prevalentHyp', 'diabetes']
+        
+        for feature in cat_features:
+            if feature in raw_df.columns and feature in df.columns:
+                st.write(f"**{feature} 分布对比**")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("原始数据")
+                    raw_counts = raw_df[feature].value_counts()
+                    fig, ax = plt.subplots()
+                    raw_counts.plot(kind='bar', ax=ax)
+                    plt.title(f'Raw Data {feature} Distribution')
+                    st.pyplot(fig)
+                
+                with col2:
+                    st.write("清洗后数据")
+                    clean_counts = df[feature].value_counts()
+                    fig, ax = plt.subplots()
+                    clean_counts.plot(kind='bar', ax=ax)
+                    plt.title(f'Cleaned Data {feature} Distribution')
+                    st.pyplot(fig)
     
-    # 显示目标变量分布
-    st.write("### 目标变量分布")
-    target_counts = df['target'].value_counts()
-    st.bar_chart(target_counts)
-    st.write(f"无心脏病: {target_counts[0]}人")
-    st.write(f"有心脏病: {target_counts[1]}人")
+    with tab3:
+        st.write("### 数据质量分析")
+        
+        # 缺失值分析
+        st.write("#### 缺失值分析")
+        
+        # 缺失值热力图
+        if raw_df.isnull().sum().sum() > 0:
+            st.write("**缺失值模式热力图**")
+            fig, ax = plt.subplots(figsize=(12, 8))
+            sns.heatmap(raw_df.isnull(), cbar=False, cmap='viridis', ax=ax)
+            plt.title('Missing Values Pattern Heatmap')
+            st.pyplot(fig)
+        
+        # 异常值分析
+        st.write("#### 异常值分析")
+        
+        for feature in numeric_features:
+            if feature in df.columns:
+                st.write(f"**{feature} 异常值分析**")
+                fig, ax = plt.subplots()
+                sns.boxplot(x=df[feature], ax=ax)
+                plt.title(f'{feature} Box Plot')
+                st.pyplot(fig)
+                
+                # 计算IQR和异常值
+                Q1 = df[feature].quantile(0.25)
+                Q3 = df[feature].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                outliers = df[(df[feature] < lower_bound) | (df[feature] > upper_bound)]
+                st.write(f"异常值数量: {len(outliers)}")
+                st.write(f"异常值范围: < {lower_bound:.2f} 或 > {upper_bound:.2f}")
+        
+        # 类别不平衡分析
+        st.write("#### 类别不平衡分析")
+        target_counts = df['target'].value_counts()
+        total = len(df)
+        class_ratio = target_counts[0] / target_counts[1] if target_counts[1] > 0 else float('inf')
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**目标变量分布**")
+            fig, ax = plt.subplots()
+            target_counts.plot(kind='bar', ax=ax)
+            plt.title('Target Variable Distribution')
+            st.pyplot(fig)
+        
+        with col2:
+            st.write("**目标变量比例**")
+            fig, ax = plt.subplots()
+            target_counts.plot(kind='pie', autopct='%1.1f%%', ax=ax)
+            plt.title('Target Variable Proportion')
+            st.pyplot(fig)
+        
+        st.write(f"类别比例 (0:1): {class_ratio:.2f}:1")
+        if class_ratio > 2:
+            st.write("⚠️ 注意：数据存在类别不平衡问题，可能需要考虑过采样或欠采样方法")
+        
+        # 数据完整性总览
+        st.write("#### 数据完整性总览")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("总样本数", raw_df.shape[0])
+        col2.metric("完整样本数", df.shape[0])
+        col3.metric("删除样本数", raw_df.shape[0] - df.shape[0])
+        col4.metric("特征数量", df.shape[1])
     
-    # 显示特征相关性热力图
-    st.write("### 特征相关性热力图")
-    corr = df.corr()
-    fig, ax = plt.subplots(figsize=(12, 10))
-    sns.heatmap(corr, annot=True, cmap='coolwarm', ax=ax)
-    st.pyplot(fig)
+    with tab4:
+        # 显示特征相关性热力图
+        st.write("### 特征相关性热力图")
+        corr = df.corr()
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sns.heatmap(corr, annot=True, cmap='coolwarm', ax=ax)
+        st.pyplot(fig)
 
 # 3. 模型训练部分
 elif option == "模型训练":
@@ -115,16 +309,21 @@ elif option == "模型训练":
     )
     
     # 训练模型
-    if st.button("开始训练"):
-        if model_choice == "Logistic Regression":
+    @st.cache_data
+    def train_model(model_name, X_train, y_train):
+        if model_name == "Logistic Regression":
             model = LogisticRegression(max_iter=200)
-        elif model_choice == "Random Forest":
+        elif model_name == "Random Forest":
             model = RandomForestClassifier(n_estimators=100)
-        elif model_choice == "XGBoost":
+        elif model_name == "XGBoost":
             model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
         
         # 训练模型
-        model.fit(X_train_scaled, y_train)
+        model.fit(X_train, y_train)
+        return model
+    
+    if st.button("开始训练"):
+        model = train_model(model_choice, X_train_scaled, y_train)
         
         # 预测
         y_pred = model.predict(X_test_scaled)
@@ -133,6 +332,14 @@ elif option == "模型训练":
         # 评估指标
         st.write("### 模型评估结果")
         st.text(classification_report(y_test, y_pred))
+        
+        # 指标解释
+        st.write("#### 指标解释")
+        st.markdown("- **精确率（Precision）**：预测为正例的样本中，实际为正的比例。高精确率意味着误诊少。")
+        st.markdown("- **召回率（Recall）**：实际为正例的样本中，被正确预测的比例。高召回率意味着漏诊少。")
+        st.markdown("- **F1-score**：精确率和召回率的调和平均，综合衡量。")
+        st.markdown("- **AUC**：ROC曲线下的面积，衡量模型区分正负样本的能力，值越大越好。")
+        st.markdown("⚠️ 在心脏病预测场景中，召回率（Recall）尤为重要，因为漏诊的代价很高。")
         
         # 交叉验证（使用标准化后的数据）
         cv_score = cross_val_score(model, X_train_scaled, y_train, cv=5).mean()
@@ -147,9 +354,9 @@ elif option == "模型训练":
         cm = confusion_matrix(y_test, y_pred)
         fig, ax = plt.subplots()
         sns.heatmap(cm, annot=True, fmt='d', ax=ax)
-        plt.xlabel('预测')
-        plt.ylabel('实际')
-        plt.title(f'{model_choice} 混淆矩阵')
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title(f'{model_choice} Confusion Matrix')
         st.pyplot(fig)
         
         # ROC曲线
@@ -160,9 +367,81 @@ elif option == "模型训练":
         ax.plot([0,1],[0,1],'k--')
         ax.set_xlabel('False Positive Rate')
         ax.set_ylabel('True Positive Rate')
-        ax.set_title('ROC曲线')
+        ax.set_title('ROC Curve')
         ax.legend()
         st.pyplot(fig)
+        
+        # 阈值选择分析
+        st.write("### 阈值选择分析")
+        threshold = st.slider("选择分类阈值", 0.0, 1.0, 0.5, 0.05)
+        
+        # 根据阈值更新预测
+        y_pred_threshold = (y_pred_proba >= threshold).astype(int)
+        
+        # 更新评估指标
+        st.write("#### 阈值调整结果")
+        st.text(classification_report(y_test, y_pred_threshold))
+        
+        # 更新混淆矩阵
+        cm_threshold = confusion_matrix(y_test, y_pred_threshold)
+        fig, ax = plt.subplots()
+        sns.heatmap(cm_threshold, annot=True, fmt='d', ax=ax)
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title(f'{model_choice} 混淆矩阵 (阈值={threshold})')
+        st.pyplot(fig)
+        
+        # 计算敏感度和特异度
+        from sklearn.metrics import recall_score, precision_score
+        sensitivity = recall_score(y_test, y_pred_threshold)
+        specificity = recall_score(y_test, y_pred_threshold, pos_label=0)
+        st.write(f"敏感度（召回率）: {sensitivity:.4f}")
+        st.write(f"特异度: {specificity:.4f}")
+        
+        # 阈值-敏感度/特异度曲线
+        st.write("#### 阈值-敏感度/特异度曲线")
+        thresholds = np.linspace(0, 1, 100)
+        sensitivities = []
+        specificities = []
+        
+        for t in thresholds:
+            y_pred_t = (y_pred_proba >= t).astype(int)
+            sensitivities.append(recall_score(y_test, y_pred_t))
+            specificities.append(recall_score(y_test, y_pred_t, pos_label=0))
+        
+        fig, ax = plt.subplots()
+        ax.plot(thresholds, sensitivities, label='Sensitivity (Recall)')
+        ax.plot(thresholds, specificities, label='Specificity')
+        ax.axvline(x=threshold, color='r', linestyle='--', label=f'Current Threshold: {threshold}')
+        ax.set_xlabel('Threshold')
+        ax.set_ylabel('Score')
+        ax.set_title('Effect of Threshold on Sensitivity and Specificity')
+        ax.legend()
+        st.pyplot(fig)
+        
+        # 特征重要性解释
+        st.write("### 特征重要性分析")
+        if model_choice in ["Random Forest", "XGBoost"]:
+            importances = model.feature_importances_
+            feat_importances = pd.DataFrame({'feature': X.columns, 'importance': importances})
+            feat_importances = feat_importances.sort_values('importance', ascending=False)
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.barplot(x='importance', y='feature', data=feat_importances, ax=ax)
+            plt.title(f'{model_choice} Feature Importance')
+            st.pyplot(fig)
+            
+            # 显示前5个重要特征
+            top_features = feat_importances.head(5)
+            st.write("#### 重要特征分析")
+            for i, row in top_features.iterrows():
+                st.write(f"- **{row['feature']}**: 重要性 = {row['importance']:.4f}")
+        
+        # 业务场景总结
+        st.write("### 业务场景总结")
+        st.markdown(f"> 根据当前模型,在默认阈值0.5下，模型能够正确识别出{sensitivity:.2%}的实际心脏病患者（召回率），但有{1-specificity:.2%}的健康人被误诊为患者。")
+        st.markdown(f"> 如果我们将阈值降低到0.3,可以识别出更多的患者（召回率提升），但误诊率也会上升。")
+        st.markdown(f"> 在实际应用中，需要根据医疗资源和患者承受能力选择合适的阈值。")
 
 # 4. 模型预测部分
 elif option == "模型预测":
@@ -322,6 +601,23 @@ elif option == "SHAP可解释性分析":
     shap.dependence_plot(feature, shap_values_array, X_test_scaled, feature_names=X.columns, show=False)
     # 显示图形
     st.pyplot()
+
+# 数据血缘
+st.sidebar.markdown("---")
+st.sidebar.subheader("数据处理流程")
+
+if dataset_name == "UCI心脏病数据集":
+    st.sidebar.markdown("1. **原始数据**：从 `processed.cleveland.data` 读取，包含 303 条记录,13 个特征 + 1 个目标变量。")
+    st.sidebar.markdown("2. **缺失值标识**：将文件中的 `?` 替换为 `NaN`，识别出缺失值。")
+    st.sidebar.markdown("3. **缺失值处理**：删除含有 `NaN` 的行，剩余 297 条记录。")
+    st.sidebar.markdown("4. **数据类型转换**：将 `ca` 和 `thal` 列转换为数值类型（原为字符串）。")
+    st.sidebar.markdown("5. **目标变量二值化**:将目标变量转换为二分类:0 表示无心脏病,1 表示有心脏病。")
+    st.sidebar.markdown("6. **最终建模数据**:297 条记录,13 个特征，目标为二分类。")
+elif dataset_name == "Framingham数据集":
+    st.sidebar.markdown("1. **原始数据**：从 `framingham.csv` 读取，包含 4240 条记录,15 个特征 + 1 个目标变量。")
+    st.sidebar.markdown("2. **缺失值处理**：删除含有 `NaN` 的行，剩余约 3658 条记录。")
+    st.sidebar.markdown("3. **目标变量重命名**：将 `TenYearCHD` 重命名为 `target` 以保持一致性。")
+    st.sidebar.markdown("4. **最终建模数据**:约 3658 条记录,15 个特征，目标为二分类。")
 
 # 页脚
 st.sidebar.markdown("---")
