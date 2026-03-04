@@ -1,0 +1,15 @@
+# 基础库
+streamlit>=1.28.0,<2.0.0
+pandas>=1.4.0
+numpy>=1.21.0
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# 机器学习核心库
+scikit-learn>=1.1.0
+xgboost>=1.7.0  # XGBoost 分类器依赖
+shap>=0.41.0    # SHAP 解释模型依赖
+
+# 辅助库（确保模型加载/运行）
+joblib>=1.2.0
+pickle-mixin>=1.0.2
