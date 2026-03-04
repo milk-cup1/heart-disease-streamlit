@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -31,10 +32,13 @@ option = st.sidebar.selectbox(
 # 1. 数据加载和预处理
 @st.cache_data
 def load_data(dataset_name):
+    # 获取当前脚本所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     if dataset_name == "UCI心脏病数据集":
         # 加载UCI心脏病数据集
         columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
-        df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
+        data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
+        df = pd.read_csv(data_path, names=columns)
         # 处理缺失值
         df = df.replace('?', pd.NA)
         df = df.dropna()
@@ -45,7 +49,8 @@ def load_data(dataset_name):
         df['target'] = df['target'].apply(lambda x: 1 if x > 0 else 0)
     elif dataset_name == "Framingham数据集":
         # 加载Framingham数据集
-        df = pd.read_csv('framingham.csv')
+        data_path = os.path.join(current_dir, 'framingham.csv')
+        df = pd.read_csv(data_path)
         # 处理缺失值
         df = df.dropna()
         # 重命名目标变量以保持一致性
