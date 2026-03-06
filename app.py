@@ -607,17 +607,17 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("数据处理流程")
 
 if dataset_name == "UCI心脏病数据集":
-    st.sidebar.markdown("1. **原始数据**：从 `processed.cleveland.data` 读取，包含 303 条记录,13 个特征 + 1 个目标变量。")
-    st.sidebar.markdown("2. **缺失值标识**：将文件中的 `?` 替换为 `NaN`，识别出缺失值。")
-    st.sidebar.markdown("3. **缺失值处理**：删除含有 `NaN` 的行，剩余 297 条记录。")
-    st.sidebar.markdown("4. **数据类型转换**：将 `ca` 和 `thal` 列转换为数值类型（原为字符串）。")
-    st.sidebar.markdown("5. **目标变量二值化**:将目标变量转换为二分类:0 表示无心脏病,1 表示有心脏病。")
-    st.sidebar.markdown("6. **最终建模数据**:297 条记录,13 个特征，目标为二分类。")
+    st.sidebar.write("1. 原始数据：从 processed.cleveland.data 读取，包含 303 条记录,13 个特征 + 1 个目标变量。")
+    st.sidebar.write("2. 缺失值标识：将文件中的 ? 替换为 NaN，识别出缺失值。")
+    st.sidebar.write("3. 缺失值处理：删除含有 NaN 的行，剩余 297 条记录。")
+    st.sidebar.write("4. 数据类型转换：将 ca 和 thal 列转换为数值类型（原为字符串）。")
+    st.sidebar.write("5. 目标变量二值化:将目标变量转换为二分类:0 表示无心脏病,1 表示有心脏病。")
+    st.sidebar.write("6. 最终建模数据:297 条记录,13 个特征，目标为二分类。")
 elif dataset_name == "Framingham数据集":
-    st.sidebar.markdown("1. **原始数据**：从 `framingham.csv` 读取，包含 4240 条记录,15 个特征 + 1 个目标变量。")
-    st.sidebar.markdown("2. **缺失值处理**：删除含有 `NaN` 的行，剩余约 3658 条记录。")
-    st.sidebar.markdown("3. **目标变量重命名**：将 `TenYearCHD` 重命名为 `target` 以保持一致性。")
-    st.sidebar.markdown("4. **最终建模数据**:约 3658 条记录,15 个特征，目标为二分类。")
+    st.sidebar.write("1. 原始数据：从 framingham.csv 读取，包含 4240 条记录,15 个特征 + 1 个目标变量。")
+    st.sidebar.write("2. 缺失值处理：删除含有 NaN 的行，剩余约 3658 条记录。")
+    st.sidebar.write("3. 目标变量重命名：将 TenYearCHD 重命名为 target 以保持一致性。")
+    st.sidebar.write("4. 最终建模数据:约 3658 条记录,15 个特征，目标为二分类。")
 
 # 页脚
 st.sidebar.markdown("---")
