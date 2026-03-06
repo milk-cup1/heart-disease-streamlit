@@ -32,36 +32,41 @@ option = st.sidebar.selectbox(
 # 1. 数据加载和预处理
 @st.cache_data
 def load_data(dataset_name):
-    # 获取当前脚本所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    if dataset_name == "UCI心脏病数据集":
-        # 加载UCI心脏病数据集
-        columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
-        data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
-        # 原始数据
-        raw_df = pd.read_csv(data_path, names=columns)
-        # 清洗后的数据
-        df = raw_df.copy()
-        # 处理缺失值
-        df = df.replace('?', pd.NA)
-        df = df.dropna()
-        # 将ca和thal列转换为数值类型
-        df['ca'] = pd.to_numeric(df['ca'])
-        df['thal'] = pd.to_numeric(df['thal'])
-        # 转换目标变量为二分类
-        df['target'] = df['target'].apply(lambda x: 1 if x > 0 else 0)
-    elif dataset_name == "Framingham数据集":
-        # 加载Framingham数据集
-        data_path = os.path.join(current_dir, 'framingham.csv')
-        # 原始数据
-        raw_df = pd.read_csv(data_path)
-        # 清洗后的数据
-        df = raw_df.copy()
-        # 处理缺失值
-        df = df.dropna()
-        # 重命名目标变量以保持一致性
-        df = df.rename(columns={'TenYearCHD': 'target'})
-    return df, raw_df
+    try:
+        if dataset_name == "UCI心脏病数据集":
+            columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
+            # 尝试相对路径
+            try:
+                raw_df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
+            except FileNotFoundError:
+                # 如果相对路径失败，尝试使用绝对路径
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
+                raw_df = pd.read_csv(data_path, names=columns)
+            
+            df = raw_df.copy()
+            df = df.replace('?', pd.NA)
+            df = df.dropna()
+            df['ca'] = pd.to_numeric(df['ca'])
+            df['thal'] = pd.to_numeric(df['thal'])
+            df['target'] = df['target'].apply(lambda x: 1 if x > 0 else 0)
+        elif dataset_name == "Framingham数据集":
+            # 尝试相对路径
+            try:
+                raw_df = pd.read_csv('framingham.csv')
+            except FileNotFoundError:
+                # 如果相对路径失败，尝试使用绝对路径
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                data_path = os.path.join(current_dir, 'framingham.csv')
+                raw_df = pd.read_csv(data_path)
+            
+            df = raw_df.copy()
+            df = df.dropna()
+            df = df.rename(columns={'TenYearCHD': 'target'})
+        return df, raw_df
+    except Exception as e:
+        st.error(f"加载数据时出错: {str(e)}")
+        return None, None
 
 # 数据集选择
 st.sidebar.subheader("数据集选择")
@@ -72,6 +77,10 @@ dataset_name = st.sidebar.selectbox(
 
 # 加载数据
 df, raw_df = load_data(dataset_name)
+
+# 检查数据加载是否成功
+if df is None or raw_df is None:
+    st.stop()
 
 # 2. 数据探索部分
 if option == "数据探索":
