@@ -37,36 +37,116 @@ def load_data(dataset_name):
             columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal', 'target']
             # 尝试相对路径
             try:
-                raw_df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
+                df = pd.read_csv('heart+disease/processed.cleveland.data', names=columns)
             except FileNotFoundError:
                 # 如果相对路径失败，尝试使用绝对路径
                 current_dir = os.path.dirname(os.path.abspath(__file__))
                 data_path = os.path.join(current_dir, 'heart+disease', 'processed.cleveland.data')
-                raw_df = pd.read_csv(data_path, names=columns)
+                df = pd.read_csv(data_path, names=columns)
             
-            df = raw_df.copy()
+            # 基本处理：替换缺失值标记
             df = df.replace('?', pd.NA)
-            df = df.dropna()
-            df['ca'] = pd.to_numeric(df['ca'])
-            df['thal'] = pd.to_numeric(df['thal'])
+            # 将目标变量转换为二分类
             df['target'] = df['target'].apply(lambda x: 1 if x > 0 else 0)
         elif dataset_name == "Framingham数据集":
             # 尝试相对路径
             try:
-                raw_df = pd.read_csv('framingham.csv')
+                df = pd.read_csv('framingham.csv')
             except FileNotFoundError:
                 # 如果相对路径失败，尝试使用绝对路径
                 current_dir = os.path.dirname(os.path.abspath(__file__))
                 data_path = os.path.join(current_dir, 'framingham.csv')
-                raw_df = pd.read_csv(data_path)
+                df = pd.read_csv(data_path)
             
-            df = raw_df.copy()
-            df = df.dropna()
+            # 重命名目标变量
             df = df.rename(columns={'TenYearCHD': 'target'})
-        return df, raw_df
+        return df
     except Exception as e:
         st.error(f"加载数据时出错: {str(e)}")
-        return None, None
+        return None
+
+# 数据预处理函数，避免数据泄露
+def preprocess_data(X_train, X_test, y_train, dataset_name):
+    # 处理 UCI 心脏病数据集
+    if dataset_name == "UCI心脏病数据集":
+        # 训练集处理：删除缺失值
+        train_data = pd.concat([X_train, y_train], axis=1)
+        train_data = train_data.dropna()
+        X_train_clean = train_data.drop('target', axis=1)
+        y_train_clean = train_data['target']
+        
+        # 将 ca 和 thal 列转换为数值类型
+        X_train_clean['ca'] = pd.to_numeric(X_train_clean['ca'])
+        X_train_clean['thal'] = pd.to_numeric(X_train_clean['thal'])
+        
+        # 测试集处理：删除缺失值
+        X_test_clean = X_test.dropna()
+        
+        # 将 ca 和 thal 列转换为数值类型
+        X_test_clean['ca'] = pd.to_numeric(X_test_clean['ca'])
+        X_test_clean['thal'] = pd.to_numeric(X_test_clean['thal'])
+        
+        return X_train_clean, X_test_clean, y_train_clean
+    
+    # 处理 Framingham 数据集
+    elif dataset_name == "Framingham数据集":
+        # 训练集处理：按 target 分组填充
+        train_data = pd.concat([X_train, y_train], axis=1)
+        
+        # 按 target 分组进行填充
+        for target_group in train_data['target'].unique():
+            # 获取当前组的数据
+            group_data = train_data[train_data['target'] == target_group]
+            
+            # 对数值型特征使用均值填充
+            numeric_cols = group_data.select_dtypes(include=['float64', 'int64']).columns
+            for col in numeric_cols:
+                if train_data[col].isnull().sum() > 0:
+                    fill_value = group_data[col].mean()
+                    train_data.loc[train_data['target'] == target_group, col] = train_data.loc[train_data['target'] == target_group, col].fillna(fill_value)
+            
+            # 对分类型特征使用众数填充
+            categorical_cols = group_data.select_dtypes(include=['object']).columns
+            for col in categorical_cols:
+                if train_data[col].isnull().sum() > 0:
+                    fill_value = group_data[col].mode()[0]
+                    train_data.loc[train_data['target'] == target_group, col] = train_data.loc[train_data['target'] == target_group, col].fillna(fill_value)
+        
+        # 检查是否还有缺失值
+        if train_data.isnull().sum().sum() > 0:
+            # 如果还有缺失值，使用全局统计量填充
+            for col in train_data.columns:
+                if train_data[col].isnull().sum() > 0:
+                    if train_data[col].dtype in ['float64', 'int64']:
+                        train_data[col] = train_data[col].fillna(train_data[col].mean())
+                    else:
+                        train_data[col] = train_data[col].fillna(train_data[col].mode()[0])
+        
+        X_train_clean = train_data.drop('target', axis=1)
+        y_train_clean = train_data['target']
+        
+        # 测试集处理：使用训练集的全局统计量填充
+        test_data = X_test.copy()
+        
+        # 计算训练集的全局统计量
+        train_stats = {}
+        numeric_cols = X_train_clean.select_dtypes(include=['float64', 'int64']).columns
+        categorical_cols = X_train_clean.select_dtypes(include=['object']).columns
+        
+        # 对数值型特征使用训练集的中位数（对离群值更鲁棒）
+        for col in numeric_cols:
+            train_stats[col] = X_train_clean[col].median()
+        
+        # 对分类型特征使用训练集的众数
+        for col in categorical_cols:
+            train_stats[col] = X_train_clean[col].mode()[0]
+        
+        # 使用训练集的全局统计量填充测试集
+        for col in test_data.columns:
+            if test_data[col].isnull().sum() > 0:
+                test_data[col] = test_data[col].fillna(train_stats[col])
+        
+        return X_train_clean, test_data, y_train_clean
 
 # 数据集选择
 st.sidebar.subheader("数据集选择")
@@ -76,11 +156,14 @@ dataset_name = st.sidebar.selectbox(
 )
 
 # 加载数据
-df, raw_df = load_data(dataset_name)
+df = load_data(dataset_name)
 
 # 检查数据加载是否成功
-if df is None or raw_df is None:
+if df is None:
     st.stop()
+
+# 保存原始数据用于展示
+raw_df = df.copy()
 
 # 2. 数据探索部分
 if option == "数据探索":
@@ -290,7 +373,14 @@ if option == "数据探索":
     with tab4:
         # 显示特征相关性热力图
         st.write("### 特征相关性热力图")
-        corr = df.corr()
+        # 处理缺失值后再计算相关系数
+        df_clean = df.dropna()
+        # 对 UCI 数据集，确保 ca 和 thal 列是数值类型
+        if dataset_name == "UCI心脏病数据集":
+            df_clean['ca'] = pd.to_numeric(df_clean['ca'], errors='coerce')
+            df_clean['thal'] = pd.to_numeric(df_clean['thal'], errors='coerce')
+            df_clean = df_clean.dropna()
+        corr = df_clean.corr()
         fig, ax = plt.subplots(figsize=(12, 10))
         sns.heatmap(corr, annot=True, cmap='coolwarm', ax=ax)
         st.pyplot(fig)
@@ -303,13 +393,19 @@ elif option == "模型训练":
     X = df.drop('target', axis=1)
     y = df['target']
     
-    # 数据集划分
+    # 数据集划分 - 先划分再预处理，避免数据泄露
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0, stratify=y)
     
-    # 特征标准化
+    # 数据预处理 - 使用训练集的统计量处理测试集
+    X_train_clean, X_test_clean, y_train_clean = preprocess_data(X_train, X_test, y_train, dataset_name)
+    
+    # 特征标准化 - 只在训练集上拟合
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_train_scaled = scaler.fit_transform(X_train_clean)
+    X_test_scaled = scaler.transform(X_test_clean)
+    
+    # 更新 y_test 以匹配处理后的 X_test
+    y_test_clean = y_test[X_test_clean.index]
     
     # 选择模型
     model_choice = st.selectbox(
@@ -321,18 +417,19 @@ elif option == "模型训练":
     @st.cache_data
     def train_model(model_name, X_train, y_train):
         if model_name == "Logistic Regression":
-            model = LogisticRegression(max_iter=200)
+            model = LogisticRegression(max_iter=200, class_weight='balanced')  # 处理类别不平衡
         elif model_name == "Random Forest":
-            model = RandomForestClassifier(n_estimators=100)
+            model = RandomForestClassifier(n_estimators=100, class_weight='balanced')  # 处理类别不平衡
         elif model_name == "XGBoost":
-            model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+            scale_pos_weight = len(y_train[y_train==0])/len(y_train[y_train==1]) if len(y_train[y_train==1]) > 0 else 1
+            model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', scale_pos_weight=scale_pos_weight)  # 处理类别不平衡
         
         # 训练模型
         model.fit(X_train, y_train)
         return model
     
     if st.button("开始训练"):
-        model = train_model(model_choice, X_train_scaled, y_train)
+        model = train_model(model_choice, X_train_scaled, y_train_clean)
         
         # 预测
         y_pred = model.predict(X_test_scaled)
@@ -340,7 +437,7 @@ elif option == "模型训练":
         
         # 评估指标
         st.write("### 模型评估结果")
-        st.text(classification_report(y_test, y_pred))
+        st.text(classification_report(y_test_clean, y_pred))
         
         # 指标解释
         st.write("#### 指标解释")
@@ -351,16 +448,16 @@ elif option == "模型训练":
         st.markdown("⚠️ 在心脏病预测场景中，召回率（Recall）尤为重要，因为漏诊的代价很高。")
         
         # 交叉验证（使用标准化后的数据）
-        cv_score = cross_val_score(model, X_train_scaled, y_train, cv=5).mean()
+        cv_score = cross_val_score(model, X_train_scaled, y_train_clean, cv=5).mean()
         st.write(f"5折交叉验证得分: {cv_score:.4f}")
         
         # AUC得分
-        auc_score = roc_auc_score(y_test, y_pred_proba)
+        auc_score = roc_auc_score(y_test_clean, y_pred_proba)
         st.write(f"AUC得分: {auc_score:.4f}")
         
         # 混淆矩阵
         st.write("### 混淆矩阵")
-        cm = confusion_matrix(y_test, y_pred)
+        cm = confusion_matrix(y_test_clean, y_pred)
         fig, ax = plt.subplots()
         sns.heatmap(cm, annot=True, fmt='d', ax=ax)
         plt.xlabel('Predicted')
@@ -370,7 +467,7 @@ elif option == "模型训练":
         
         # ROC曲线
         st.write("### ROC曲线")
-        fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+        fpr, tpr, _ = roc_curve(y_test_clean, y_pred_proba)
         fig, ax = plt.subplots()
         ax.plot(fpr, tpr, label=f'{model_choice} (AUC={auc_score:.2f})')
         ax.plot([0,1],[0,1],'k--')
@@ -389,21 +486,21 @@ elif option == "模型训练":
         
         # 更新评估指标
         st.write("#### 阈值调整结果")
-        st.text(classification_report(y_test, y_pred_threshold))
+        st.text(classification_report(y_test_clean, y_pred_threshold))
         
         # 更新混淆矩阵
-        cm_threshold = confusion_matrix(y_test, y_pred_threshold)
+        cm_threshold = confusion_matrix(y_test_clean, y_pred_threshold)
         fig, ax = plt.subplots()
         sns.heatmap(cm_threshold, annot=True, fmt='d', ax=ax)
         plt.xlabel('Predicted')
         plt.ylabel('Actual')
-        plt.title(f'{model_choice} 混淆矩阵 (阈值={threshold})')
+        plt.title(f'{model_choice} Confusion Matrix (Threshold={threshold})')
         st.pyplot(fig)
         
         # 计算敏感度和特异度
         from sklearn.metrics import recall_score, precision_score
-        sensitivity = recall_score(y_test, y_pred_threshold)
-        specificity = recall_score(y_test, y_pred_threshold, pos_label=0)
+        sensitivity = recall_score(y_test_clean, y_pred_threshold)
+        specificity = recall_score(y_test_clean, y_pred_threshold, pos_label=0)
         st.write(f"敏感度（召回率）: {sensitivity:.4f}")
         st.write(f"特异度: {specificity:.4f}")
         
@@ -415,8 +512,8 @@ elif option == "模型训练":
         
         for t in thresholds:
             y_pred_t = (y_pred_proba >= t).astype(int)
-            sensitivities.append(recall_score(y_test, y_pred_t))
-            specificities.append(recall_score(y_test, y_pred_t, pos_label=0))
+            sensitivities.append(recall_score(y_test_clean, y_pred_t))
+            specificities.append(recall_score(y_test_clean, y_pred_t, pos_label=0))
         
         fig, ax = plt.subplots()
         ax.plot(thresholds, sensitivities, label='Sensitivity (Recall)')
@@ -447,22 +544,28 @@ elif option == "模型训练":
                 st.write(f"- **{row['feature']}**: 重要性 = {row['importance']:.4f}")
         
         # 业务场景总结
-        st.write("### 业务场景总结")
-        st.markdown(f"> 根据当前模型,在默认阈值0.5下，模型能够正确识别出{sensitivity:.2%}的实际心脏病患者（召回率），但有{1-specificity:.2%}的健康人被误诊为患者。")
-        st.markdown(f"> 如果我们将阈值降低到0.3,可以识别出更多的患者（召回率提升），但误诊率也会上升。")
-        st.markdown(f"> 在实际应用中，需要根据医疗资源和患者承受能力选择合适的阈值。")
+        st.write("### Business Scenario Summary")
+        st.markdown(f"> Based on the current model, at the default threshold of 0.5, the model can correctly identify {sensitivity:.2%} of actual heart disease patients (recall), but {1-specificity:.2%} of healthy people are misdiagnosed as patients.")
+        st.markdown(f"> If we lower the threshold to 0.3, we can identify more patients (recall improvement), but the misdiagnosis rate will also increase.")
+        st.markdown(f"> In practical applications, the appropriate threshold needs to be selected based on medical resources and patient tolerance.")
 
 # 4. 模型预测部分
 elif option == "模型预测":
-    st.subheader("模型预测")
+    st.subheader("Model Prediction")
     
     # 特征与标签分离
     X = df.drop('target', axis=1)
     y = df['target']
     
-    # 特征标准化
+    # 数据集划分 - 先划分再预处理，避免数据泄露
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0, stratify=y)
+    
+    # 数据预处理 - 使用训练集的统计量处理测试集
+    X_train_clean, X_test_clean, y_train_clean = preprocess_data(X_train, X_test, y_train, dataset_name)
+    
+    # 特征标准化 - 只在训练集上拟合
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_train_scaled = scaler.fit_transform(X_train_clean)
     
     # 选择模型
     model_choice = st.selectbox(
@@ -470,44 +573,44 @@ elif option == "模型预测":
         ["Logistic Regression", "Random Forest", "XGBoost"]
     )
     
-    # 训练模型
+    # 训练模型 - 只在训练集上训练
     if model_choice == "Logistic Regression":
-        model = LogisticRegression(max_iter=200)
+        model = LogisticRegression(max_iter=200, class_weight='balanced')  # 处理类别不平衡
     elif model_choice == "Random Forest":
-        model = RandomForestClassifier(n_estimators=100)
+        model = RandomForestClassifier(n_estimators=100, class_weight='balanced')  # 处理类别不平衡
     elif model_choice == "XGBoost":
-        model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+        model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', scale_pos_weight=len(y_train_clean[y_train_clean==0])/len(y_train_clean[y_train_clean==1]))  # 处理类别不平衡
     
-    model.fit(X_scaled, y)
+    model.fit(X_train_scaled, y_train_clean)
     
     # 用户输入特征
-    st.write("### 输入患者信息")
+    st.write("### Patient Information Input")
     
     # 根据选择的数据集生成不同的输入字段
     if dataset_name == "UCI心脏病数据集":
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            age = st.number_input("年龄", min_value=20, max_value=100, value=50)
-            sex = st.selectbox("性别", [0, 1], format_func=lambda x: "女" if x==0 else "男")
-            cp = st.selectbox("胸痛类型", [0, 1, 2, 3], format_func=lambda x: {0: "典型心绞痛", 1: "非典型心绞痛", 2: "非心绞痛", 3: "无症状"}[x])
-            trestbps = st.number_input("静息血压", min_value=80, max_value=200, value=120)
-            chol = st.number_input("血清胆固醇", min_value=100, max_value=400, value=200)
+            age = st.number_input("Age", min_value=20, max_value=100, value=50)
+            sex = st.selectbox("Sex", [0, 1], format_func=lambda x: "Female" if x==0 else "Male")
+            cp = st.selectbox("Chest Pain Type", [0, 1, 2, 3], format_func=lambda x: {0: "Typical Angina", 1: "Atypical Angina", 2: "Non-Anginal Pain", 3: "Asymptomatic"}[x])
+            trestbps = st.number_input("Resting Blood Pressure", min_value=80, max_value=200, value=120)
+            chol = st.number_input("Serum Cholesterol", min_value=100, max_value=400, value=200)
         
         with col2:
-            fbs = st.selectbox("空腹血糖 > 120mg/dl", [0, 1], format_func=lambda x: "否" if x==0 else "是")
-            restecg = st.selectbox("静息心电图结果", [0, 1, 2], format_func=lambda x: {0: "正常", 1: "ST-T异常", 2: "左心室肥厚"}[x])
-            thalach = st.number_input("最大心率", min_value=60, max_value=220, value=150)
-            exang = st.selectbox("运动诱发心绞痛", [0, 1], format_func=lambda x: "否" if x==0 else "是")
-            oldpeak = st.number_input("ST段压低", min_value=0.0, max_value=6.0, value=0.0, step=0.1)
+            fbs = st.selectbox("Fasting Blood Sugar > 120mg/dl", [0, 1], format_func=lambda x: "No" if x==0 else "Yes")
+            restecg = st.selectbox("Resting ECG Result", [0, 1, 2], format_func=lambda x: {0: "Normal", 1: "ST-T Abnormality", 2: "Left Ventricular Hypertrophy"}[x])
+            thalach = st.number_input("Maximum Heart Rate", min_value=60, max_value=220, value=150)
+            exang = st.selectbox("Exercise Induced Angina", [0, 1], format_func=lambda x: "No" if x==0 else "Yes")
+            oldpeak = st.number_input("ST Depression", min_value=0.0, max_value=6.0, value=0.0, step=0.1)
         
         with col3:
-            slope = st.selectbox("ST段斜率", [0, 1, 2], format_func=lambda x: {0: "上升", 1: "平坦", 2: "下降"}[x])
-            ca = st.number_input("血管造影数", min_value=0, max_value=4, value=0)
-            thal = st.selectbox("地中海贫血", [0, 1, 2, 3], format_func=lambda x: {0: "正常", 1: "固定缺陷", 2: "可逆缺陷", 3: "未知"}[x])
+            slope = st.selectbox("ST Slope", [0, 1, 2], format_func=lambda x: {0: "Upsloping", 1: "Flat", 2: "Downsloping"}[x])
+            ca = st.number_input("Number of Vessels", min_value=0, max_value=4, value=0)
+            thal = st.selectbox("Thalassemia", [0, 1, 2, 3], format_func=lambda x: {0: "Normal", 1: "Fixed Defect", 2: "Reversible Defect", 3: "Unknown"}[x])
         
         # 预测
-        if st.button("预测"):
+        if st.button("Predict"):
             # 准备输入数据
             input_data = np.array([[age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal]])
             input_scaled = scaler.transform(input_data)
@@ -517,38 +620,38 @@ elif option == "模型预测":
             probability = model.predict_proba(input_scaled)[0][1]
             
             # 显示结果
-            st.write("### 预测结果")
+            st.write("### Prediction Result")
             if prediction == 1:
-                st.error(f"⚠️ 预测结果：**有心脏病风险**")
+                st.error(f"⚠️ Prediction: **At risk of heart disease**")
             else:
-                st.success(f"✅ 预测结果：**无心脏病风险**")
-            st.write(f"预测概率：{probability:.4f}")
+                st.success(f"✅ Prediction: **No risk of heart disease**")
+            st.write(f"Prediction Probability: {probability:.4f}")
     elif dataset_name == "Framingham数据集":
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            male = st.selectbox("性别", [0, 1], format_func=lambda x: "女" if x==0 else "男")
-            age = st.number_input("年龄", min_value=20, max_value=100, value=50)
-            education = st.selectbox("教育程度", [1, 2, 3, 4], format_func=lambda x: f"{x}级")
-            currentSmoker = st.selectbox("当前吸烟者", [0, 1], format_func=lambda x: "是" if x==1 else "否")
-            cigsPerDay = st.number_input("每天吸烟数", min_value=0, max_value=100, value=0)
+            male = st.selectbox("Sex", [0, 1], format_func=lambda x: "Female" if x==0 else "Male")
+            age = st.number_input("Age", min_value=20, max_value=100, value=50)
+            education = st.selectbox("Education Level", [1, 2, 3, 4], format_func=lambda x: f"Level {x}")
+            currentSmoker = st.selectbox("Current Smoker", [0, 1], format_func=lambda x: "Yes" if x==1 else "No")
+            cigsPerDay = st.number_input("Cigarettes Per Day", min_value=0, max_value=100, value=0)
         
         with col2:
-            BPMeds = st.selectbox("服用降压药", [0, 1], format_func=lambda x: "是" if x==1 else "否")
-            prevalentStroke = st.selectbox("既往卒中", [0, 1], format_func=lambda x: "是" if x==1 else "否")
-            prevalentHyp = st.selectbox("高血压", [0, 1], format_func=lambda x: "是" if x==1 else "否")
-            diabetes = st.selectbox("糖尿病", [0, 1], format_func=lambda x: "是" if x==1 else "否")
-            totChol = st.number_input("总胆固醇", min_value=100, max_value=500, value=200)
+            BPMeds = st.selectbox("Blood Pressure Medication", [0, 1], format_func=lambda x: "Yes" if x==1 else "No")
+            prevalentStroke = st.selectbox("Previous Stroke", [0, 1], format_func=lambda x: "Yes" if x==1 else "No")
+            prevalentHyp = st.selectbox("Hypertension", [0, 1], format_func=lambda x: "Yes" if x==1 else "No")
+            diabetes = st.selectbox("Diabetes", [0, 1], format_func=lambda x: "Yes" if x==1 else "No")
+            totChol = st.number_input("Total Cholesterol", min_value=100, max_value=500, value=200)
         
         with col3:
-            sysBP = st.number_input("收缩压", min_value=80, max_value=250, value=120)
-            diaBP = st.number_input("舒张压", min_value=50, max_value=150, value=80)
+            sysBP = st.number_input("Systolic Blood Pressure", min_value=80, max_value=250, value=120)
+            diaBP = st.number_input("Diastolic Blood Pressure", min_value=50, max_value=150, value=80)
             BMI = st.number_input("BMI", min_value=10.0, max_value=50.0, value=25.0, step=0.1)
-            heartRate = st.number_input("心率", min_value=40, max_value=200, value=75)
-            glucose = st.number_input("血糖", min_value=40, max_value=300, value=80)
+            heartRate = st.number_input("Heart Rate", min_value=40, max_value=200, value=75)
+            glucose = st.number_input("Glucose", min_value=40, max_value=300, value=80)
         
         # 预测
-        if st.button("预测"):
+        if st.button("Predict"):
             # 准备输入数据
             input_data = np.array([[male, age, education, currentSmoker, cigsPerDay, BPMeds, prevalentStroke, prevalentHyp, diabetes, totChol, sysBP, diaBP, BMI, heartRate, glucose]])
             input_scaled = scaler.transform(input_data)
@@ -558,75 +661,141 @@ elif option == "模型预测":
             probability = model.predict_proba(input_scaled)[0][1]
             
             # 显示结果
-            st.write("### 预测结果")
+            st.write("### Prediction Result")
             if prediction == 1:
-                st.error(f"⚠️ 预测结果：**10年内有冠心病风险**")
+                st.error(f"⚠️ Prediction: **At risk of CHD within 10 years**")
             else:
-                st.success(f"✅ 预测结果：**10年内无冠心病风险**")
-            st.write(f"预测概率：{probability:.4f}")
+                st.success(f"✅ Prediction: **No risk of CHD within 10 years**")
+            st.write(f"Prediction Probability: {probability:.4f}")
 
-# 5. SHAP可解释性分析部分
+# 5. SHAP Interpretability Analysis
 elif option == "SHAP可解释性分析":
-    st.subheader("SHAP可解释性分析")
+    st.subheader("SHAP Interpretability Analysis")
     
     # 特征与标签分离
     X = df.drop('target', axis=1)
     y = df['target']
     
-    # 数据集划分
+    # 数据集划分 - 先划分再预处理，避免数据泄露
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0, stratify=y)
     
-    # 特征标准化
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # 数据预处理 - 使用训练集的统计量处理测试集
+    X_train_clean, X_test_clean, y_train_clean = preprocess_data(X_train, X_test, y_train, dataset_name)
     
-    # 训练XGBoost模型
-    xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
-    xgb_model.fit(X_train_scaled, y_train)
+    # 特征标准化 - 只在训练集上拟合
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_clean)
+    X_test_scaled = scaler.transform(X_test_clean)
+    
+    # 训练XGBoost模型 - 处理类别不平衡
+    scale_pos_weight = len(y_train_clean[y_train_clean==0])/len(y_train_clean[y_train_clean==1]) if len(y_train_clean[y_train_clean==1]) > 0 else 1
+    xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', scale_pos_weight=scale_pos_weight)
+    xgb_model.fit(X_train_scaled, y_train_clean)
     
     # 创建SHAP解释器
     explainer = shap.Explainer(xgb_model, X_train_scaled)
     shap_values = explainer(X_test_scaled)
     
     # 绘制SHAP摘要图
-    st.write("### SHAP特征重要性摘要")
+    st.write("### SHAP Feature Importance Summary")
     # 清除之前的图形
     plt.clf()
+    # 创建图形对象
+    fig, ax = plt.subplots(figsize=(10, 6))
     # 直接调用shap.summary_plot
     shap.summary_plot(shap_values, X_test_scaled, feature_names=X.columns, show=False)
     # 显示图形
-    st.pyplot()
+    st.pyplot(fig)
     
     # 选择特征查看依赖图
-    st.write("### SHAP特征依赖图")
-    feature = st.selectbox("选择特征", X.columns)
-    
-    # 清除之前的图形
-    plt.clf()
-    # 从Explanation对象中提取SHAP值
-    shap_values_array = shap_values.values
-    # 调用shap.dependence_plot，使用特征名称
-    shap.dependence_plot(feature, shap_values_array, X_test_scaled, feature_names=X.columns, show=False)
-    # 显示图形
-    st.pyplot()
+    with st.expander("SHAP Feature Dependence Plot", expanded=False):
+        # 为特征列创建英文名称映射
+        if dataset_name == "UCI心脏病数据集":
+            # 确保使用英文特征名称
+            feature_display_names = [
+                'Age',
+                'Sex',
+                'Chest Pain Type',
+                'Resting Blood Pressure',
+                'Serum Cholesterol',
+                'Fasting Blood Sugar',
+                'Resting ECG',
+                'Maximum Heart Rate',
+                'Exercise Induced Angina',
+                'ST Depression',
+                'ST Slope',
+                'Number of Vessels',
+                'Thalassemia'
+            ]
+            # 原始列名
+            original_columns = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal']
+        elif dataset_name == "Framingham数据集":
+            # 确保使用英文特征名称
+            feature_display_names = [
+                'Sex',
+                'Age',
+                'Education Level',
+                'Current Smoker',
+                'Cigarettes Per Day',
+                'Blood Pressure Medication',
+                'Previous Stroke',
+                'Hypertension',
+                'Diabetes',
+                'Total Cholesterol',
+                'Systolic Blood Pressure',
+                'Diastolic Blood Pressure',
+                'BMI',
+                'Heart Rate',
+                'Glucose'
+            ]
+            # 原始列名
+            original_columns = ['male', 'age', 'education', 'currentSmoker', 'cigsPerDay', 'BPMeds', 'prevalentStroke', 'prevalentHyp', 'diabetes', 'totChol', 'sysBP', 'diaBP', 'BMI', 'heartRate', 'glucose']
+        
+        # 创建显示名称到原始列名的映射
+        name_to_col = dict(zip(feature_display_names, original_columns))
+        # 使用显示名称创建选择框
+        selected_display_name = st.selectbox("Select Feature", feature_display_names)
+        # 获取对应的原始列名
+        feature = name_to_col[selected_display_name]
+        
+        # 清除之前的图形
+        plt.clf()
+        # 尝试使用更简单的方法来显示SHAP值
+        st.write(f"### SHAP Values for {selected_display_name}")
+        # 从Explanation对象中提取SHAP值
+        shap_values_array = shap_values.values
+        # 获取特征索引
+        feature_idx = X.columns.get_loc(feature)
+        # 显示前10个样本的SHAP值
+        shap_df = pd.DataFrame({
+            'Feature Value': X_test_scaled[:, feature_idx],
+            'SHAP Value': shap_values_array[:, feature_idx]
+        })
+        st.write(shap_df.head(10))
+        
+        # 创建一个简单的散点图
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.scatter(shap_df['Feature Value'], shap_df['SHAP Value'])
+        ax.set_xlabel(selected_display_name)
+        ax.set_ylabel('SHAP Value')
+        ax.set_title(f'SHAP Dependence Plot for {selected_display_name}')
+        st.pyplot(fig)
 
 # 数据血缘
 st.sidebar.markdown("---")
-st.sidebar.subheader("数据处理流程")
-
-if dataset_name == "UCI心脏病数据集":
-    st.sidebar.write("1. 原始数据：从 processed.cleveland.data 读取，包含 303 条记录,13 个特征 + 1 个目标变量。")
-    st.sidebar.write("2. 缺失值标识：将文件中的 ? 替换为 NaN，识别出缺失值。")
-    st.sidebar.write("3. 缺失值处理：删除含有 NaN 的行，剩余 297 条记录。")
-    st.sidebar.write("4. 数据类型转换：将 ca 和 thal 列转换为数值类型（原为字符串）。")
-    st.sidebar.write("5. 目标变量二值化:将目标变量转换为二分类:0 表示无心脏病,1 表示有心脏病。")
-    st.sidebar.write("6. 最终建模数据:297 条记录,13 个特征，目标为二分类。")
-elif dataset_name == "Framingham数据集":
-    st.sidebar.write("1. 原始数据：从 framingham.csv 读取，包含 4240 条记录,15 个特征 + 1 个目标变量。")
-    st.sidebar.write("2. 缺失值处理：删除含有 NaN 的行，剩余约 3658 条记录。")
-    st.sidebar.write("3. 目标变量重命名：将 TenYearCHD 重命名为 target 以保持一致性。")
-    st.sidebar.write("4. 最终建模数据:约 3658 条记录,15 个特征，目标为二分类。")
+with st.sidebar.expander("数据处理流程", expanded=False):
+    if dataset_name == "UCI心脏病数据集":
+        st.write("1. 原始数据：从 processed.cleveland.data 读取，包含 303 条记录,13 个特征 + 1 个目标变量")
+        st.write("2. 缺失值标识：将文件中的 ? 替换为 NaN，识别出缺失值")
+        st.write("3. 缺失值处理：删除含有 NaN 的行，剩余 297 条记录")
+        st.write("4. 数据类型转换：将 ca 和 thal 列转换为数值类型（原为字符串）")
+        st.write("5. 目标变量二值化:将目标变量转换为二分类:0 表示无心脏病,1 表示有心脏病")
+        st.write("6. 最终建模数据:297 条记录,13 个特征，目标为二分类")
+    elif dataset_name == "Framingham数据集":
+        st.write("1. 原始数据：从 framingham.csv 读取，包含 4240 条记录,15 个特征 + 1 个目标变量")
+        st.write("2. 缺失值处理：删除含有 NaN 的行，剩余约 3658 条记录")
+        st.write("3. 目标变量重命名：将 TenYearCHD 重命名为 target 以保持一致性")
+        st.write("4. 最终建模数据:约 3658 条记录,15 个特征，目标为二分类")
 
 # 页脚
 st.sidebar.markdown("---")
