@@ -582,9 +582,10 @@ def main():
             
             # 预测
             if st.button("预测"):
-                # 准备输入数据
+                # 准备输入数据，只使用原始特征
+                original_features = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal']
                 input_data = pd.DataFrame([[age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal]],
-                                         columns=feature_names)
+                                         columns=original_features)
                 # 使用预处理管道处理输入数据
                 input_processed = preprocessor.transform(input_data)
                 
@@ -625,9 +626,10 @@ def main():
             
             # 预测
             if st.button("预测"):
-                # 准备输入数据
+                # 准备输入数据，只使用原始特征
+                original_features = ['male', 'age', 'education', 'currentSmoker', 'cigsPerDay', 'BPMeds', 'prevalentStroke', 'prevalentHyp', 'diabetes', 'totChol', 'sysBP', 'diaBP', 'BMI', 'heartRate', 'glucose']
                 input_data = pd.DataFrame([[male, age, education, currentSmoker, cigsPerDay, BPMeds, prevalentStroke, prevalentHyp, diabetes, totChol, sysBP, diaBP, BMI, heartRate, glucose]],
-                                         columns=feature_names)
+                                         columns=original_features)
                 # 使用预处理管道处理输入数据
                 input_processed = preprocessor.transform(input_data)
                 
