@@ -582,10 +582,22 @@ def main():
             
             # 预测
             if st.button("预测"):
-                # 准备输入数据，只使用原始特征
-                original_features = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal']
+                # 准备输入数据，包括原始特征和交互特征
                 input_data = pd.DataFrame([[age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal]],
-                                         columns=original_features)
+                                         columns=['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'])
+                
+                # 计算交互特征
+                input_data['age_group'] = pd.cut(input_data['age'], bins=[0, 40, 50, 60, 70, 100], labels=[1, 2, 3, 4, 5])
+                input_data['bp_group'] = pd.cut(input_data['trestbps'], bins=[0, 120, 140, 160, 200], labels=[1, 2, 3, 4])
+                input_data['chol_group'] = pd.cut(input_data['chol'], bins=[0, 200, 240, 280, 400], labels=[1, 2, 3, 4])
+                input_data['age_bp'] = input_data['age'] * input_data['trestbps']
+                input_data['age_chol'] = input_data['age'] * input_data['chol']
+                input_data['age_thalach'] = input_data['age'] * input_data['thalach']
+                input_data['bp_chol'] = input_data['trestbps'] * input_data['chol']
+                input_data['bp_thalach'] = input_data['trestbps'] * input_data['thalach']
+                input_data['chol_thalach'] = input_data['chol'] * input_data['thalach']
+                input_data['age_sex'] = input_data['age'] * input_data['sex']
+                
                 # 使用预处理管道处理输入数据
                 input_processed = preprocessor.transform(input_data)
                 
@@ -626,10 +638,22 @@ def main():
             
             # 预测
             if st.button("预测"):
-                # 准备输入数据，只使用原始特征
-                original_features = ['male', 'age', 'education', 'currentSmoker', 'cigsPerDay', 'BPMeds', 'prevalentStroke', 'prevalentHyp', 'diabetes', 'totChol', 'sysBP', 'diaBP', 'BMI', 'heartRate', 'glucose']
+                # 准备输入数据，包括原始特征和交互特征
                 input_data = pd.DataFrame([[male, age, education, currentSmoker, cigsPerDay, BPMeds, prevalentStroke, prevalentHyp, diabetes, totChol, sysBP, diaBP, BMI, heartRate, glucose]],
-                                         columns=original_features)
+                                         columns=['male', 'age', 'education', 'currentSmoker', 'cigsPerDay', 'BPMeds', 'prevalentStroke', 'prevalentHyp', 'diabetes', 'totChol', 'sysBP', 'diaBP', 'BMI', 'heartRate', 'glucose'])
+                
+                # 计算交互特征
+                input_data['age_group'] = pd.cut(input_data['age'], bins=[0, 40, 50, 60, 70, 100], labels=[1, 2, 3, 4, 5])
+                input_data['bmi_group'] = pd.cut(input_data['BMI'], bins=[0, 18.5, 24, 28, 32, 50], labels=[1, 2, 3, 4, 5])
+                input_data['bp_group'] = pd.cut(input_data['sysBP'], bins=[0, 120, 140, 160, 200], labels=[1, 2, 3, 4])
+                input_data['age_bp'] = input_data['age'] * input_data['sysBP']
+                input_data['bmi_age'] = input_data['BMI'] * input_data['age']
+                input_data['smoke_age'] = input_data['currentSmoker'] * input_data['age']
+                input_data['age_chol'] = input_data['age'] * input_data['totChol']
+                input_data['bp_chol'] = input_data['sysBP'] * input_data['totChol']
+                input_data['age_glucose'] = input_data['age'] * input_data['glucose']
+                input_data['bmi_bp'] = input_data['BMI'] * input_data['sysBP']
+                
                 # 使用预处理管道处理输入数据
                 input_processed = preprocessor.transform(input_data)
                 
